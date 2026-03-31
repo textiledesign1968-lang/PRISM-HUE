@@ -1,166 +1,176 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>HEX ⇄ CMYK Converter</title>
-  <style>
-    body {
-      font-family: system-ui, sans-serif;
-      padding: 40px;
-      background: #f5f5f5;
-      color: #222;
-    }
-    .card {
-      max-width: 480px;
-      margin: 0 auto;
-      background: #fff;
-      padding: 24px;
-      border-radius: 12px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.06);
-    }
-    h1 { font-size: 22px; margin-bottom: 16px; }
-    label { font-size: 14px; font-weight: 600; display: block; margin-top: 16px; }
-    input {
-      width: 100%;
-      padding: 10px 12px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
-      font-size: 14px;
-      margin-top: 6px;
-    }
-    button {
-      margin-top: 20px;
-      padding: 10px 16px;
-      border-radius: 8px;
-      border: none;
-      background: #222;
-      color: #fff;
-      font-size: 14px;
-      cursor: pointer;
-    }
-    .preview {
-      width: 100%;
-      height: 60px;
-      border-radius: 8px;
-      border: 1px solid #ddd;
-      margin: 16px 0;
-    }
-    .result { font-size: 14px; line-height: 1.6; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>HEX ⇄ CMYK Converter</h1>
+import streamlit as st
 
-    <label>HEX → CMYK</label>
-    <input id="hexInput" placeholder="#D4B39A" />
+# -----------------------------
+# Base conversion functions
+# -----------------------------
 
-    <label>CMYK → HEX (comma separated)</label>
-    <input id="cmykInput" placeholder="0, 12, 22, 0" />
+def hex_to_rgb(hex_code):
+    hex_code = hex_code.strip().lstrip("#")
+    if len(hex_code) == 3:
+        hex_code = "".join([c*2 for c in hex_code])
+    if len(hex_code) != 6:
+        return None
+    r = int(hex_code[0:2], 16)
+    g = int(hex_code[2:4], 16)
+    b = int(hex_code[4:6], 16)
+    return r, g, b
 
-    <button onclick="convert()">Convert</button>
+def rgb_to_hex(r, g, b):
+    return "#{:02X}{:02X}{:02X}".format(r, g, b)
 
-    <div id="preview" class="preview"></div>
-    <div id="results" class="result"></div>
-  </div>
+def rgb_to_cmyk(r, g, b):
+    r_p, g_p, b_p = r/255, g/255, b/255
+    k = 1 - max(r_p, g_p, b_p)
+    if k == 1:
+        return 0, 0, 0, 100
+    c = (1 - r_p - k) / (1 - k)
+    m = (1 - g_p - k) / (1 - k)
+    y = (1 - b_p - k) / (1 - k)
+    return round(c*100), round(m*100), round(y*100), round(k*100)
 
-  <script>
-    function normalizeHex(hex) {
-      hex = hex.trim();
-      if (!hex.startsWith("#")) hex = "#" + hex;
-      if (hex.length === 4) {
-        const r = hex[1], g = hex[2], b = hex[3];
-        hex = "#" + r + r + g + g + b + b;
-      }
-      return hex.toUpperCase();
-    }
+def cmyk_to_rgb(c, m, y, k):
+    c, m, y, k = c/100, m/100, y/100, k/100
+    r = round(255 * (1 - c) * (1 - k))
+    g = round(255 * (1 - m) * (1 - k))
+    b = round(255 * (1 - y) * (1 - k))
+    return r, g, b
 
-    function hexToRgb(hex) {
-      hex = normalizeHex(hex);
-      if (!/^#([0-9A-F]{6})$/.test(hex)) return null;
-      return {
-        r: parseInt(hex.slice(1, 3), 16),
-        g: parseInt(hex.slice(3, 5), 16),
-        b: parseInt(hex.slice(5, 7), 16),
-        hex
-      };
-    }
+# -----------------------------
+# HSL helpers for tints/tones/shades
+# -----------------------------
 
-    function rgbToCmyk(r, g, b) {
-      const rp = r / 255, gp = g / 255, bp = b / 255;
-      const k = 1 - Math.max(rp, gp, bp);
-      if (k === 1) return { c: 0, m: 0, y: 0, k: 100 };
-      const c = (1 - rp - k) / (1 - k);
-      const m = (1 - gp - k) / (1 - k);
-      const y = (1 - bp - k) / (1 - k);
-      return {
-        c: Math.round(c * 100),
-        m: Math.round(m * 100),
-        y: Math.round(y * 100),
-        k: Math.round(k * 100)
-      };
-    }
+def rgb_to_hsl(r, g, b):
+    r_p, g_p, b_p = r/255, g/255, b/255
+    max_c = max(r_p, g_p, b_p)
+    min_c = min(r_p, g_p, b_p)
+    l = (max_c + min_c) / 2
 
-    function cmykToRgb(c, m, y, k) {
-      c /= 100; m /= 100; y /= 100; k /= 100;
-      const r = 255 * (1 - c) * (1 - k);
-      const g = 255 * (1 - m) * (1 - k);
-      const b = 255 * (1 - y) * (1 - k);
-      return {
-        r: Math.round(r),
-        g: Math.round(g),
-        b: Math.round(b)
-      };
-    }
+    if max_c == min_c:
+        h = s = 0
+    else:
+        d = max_c - min_c
+        s = d / (2 - max_c - min_c) if l > 0.5 else d / (max_c + min_c)
+        if max_c == r_p:
+            h = (g_p - b_p) / d + (6 if g_p < b_p else 0)
+        elif max_c == g_p:
+            h = (b_p - r_p) / d + 2
+        else:
+            h = (r_p - g_p) / d + 4
+        h /= 6
+    return h, s, l
 
-    function rgbToHex(r, g, b) {
-      return (
-        "#" +
-        r.toString(16).padStart(2, "0") +
-        g.toString(16).padStart(2, "0") +
-        b.toString(16).padStart(2, "0")
-      ).toUpperCase();
-    }
+def hsl_to_rgb(h, s, l):
+    def hue_to_rgb(p, q, t):
+        if t < 0: t += 1
+        if t > 1: t -= 1
+        if t < 1/6: return p + (q - p) * 6 * t
+        if t < 1/2: return q
+        if t < 2/3: return p + (q - p) * (2/3 - t) * 6
+        return p
 
-    function convert() {
-      const hexInput = document.getElementById("hexInput").value.trim();
-      const cmykInput = document.getElementById("cmykInput").value.trim();
-      const results = document.getElementById("results");
-      const preview = document.getElementById("preview");
+    if s == 0:
+        r = g = b = int(l * 255)
+        return r, g, b
 
-      let output = "";
+    q = l * (1 + s) if l < 0.5 else l + s - l * s
+    p = 2 * l - q
+    r = hue_to_rgb(p, q, h + 1/3)
+    g = hue_to_rgb(p, q, h)
+    b = hue_to_rgb(p, q, h - 1/3)
+    return int(round(r * 255)), int(round(g * 255)), int(round(b * 255))
 
-      // HEX → CMYK
-      if (hexInput) {
-        const rgb = hexToRgb(hexInput);
-        if (rgb) {
-          const cmyk = rgbToCmyk(rgb.r, rgb.g, rgb.b);
-          output += `<strong>HEX → CMYK</strong><br>
-            HEX: ${rgb.hex}<br>
-            CMYK: ${cmyk.c}%, ${cmyk.m}%, ${cmyk.y}%, ${cmyk.k}%<br><br>`;
-          preview.style.background = rgb.hex;
-        } else {
-          output += "Invalid HEX format.<br><br>";
-        }
-      }
+# -----------------------------
+# Generate tints, shades, tones
+# -----------------------------
 
-      // CMYK → HEX
-      if (cmykInput) {
-        const parts = cmykInput.split(",").map(v => parseFloat(v.trim()));
-        if (parts.length === 4 && parts.every(v => !isNaN(v))) {
-          const rgb = cmykToRgb(parts[0], parts[1], parts[2], parts[3]);
-          const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
-          output += `<strong>CMYK → HEX</strong><br>
-            RGB: ${rgb.r}, ${rgb.g}, ${rgb.b}<br>
-            HEX: ${hex}<br>`;
-          preview.style.background = hex;
-        } else {
-          output += "Invalid CMYK format.";
-        }
-      }
+def generate_tints_shades_tones(r, g, b, steps=10):
+    h, s, l = rgb_to_hsl(r, g, b)
 
-      results.innerHTML = output;
-    }
-  </script>
-</body>
-</html>
+    tints = []
+    shades = []
+    tones = []
+
+    for i in range(1, steps + 1):
+        factor = i / (steps + 1)
+
+        # Tints: increase lightness toward 1
+        l_tint = l + (1 - l) * factor
+        l_tint = min(1, max(0, l_tint))
+        rt, gt, bt = hsl_to_rgb(h, s, l_tint)
+        tints.append((rt, gt, bt))
+
+        # Shades: decrease lightness toward 0
+        l_shade = l * (1 - factor)
+        l_shade = min(1, max(0, l_shade))
+        rs, gs, bs = hsl_to_rgb(h, s, l_shade)
+        shades.append((rs, gs, bs))
+
+        # Tones: reduce saturation toward 0
+        s_tone = s * (1 - factor)
+        s_tone = min(1, max(0, s_tone))
+        rto, gto, bto = hsl_to_rgb(h, s_tone, l)
+        tones.append((rto, gto, bto))
+
+    return tints, shades, tones
+
+# -----------------------------
+# Streamlit UI
+# -----------------------------
+
+st.set_page_config(page_title="HEX ⇄ CMYK + Tints/Tones/Shades", page_icon="🎨")
+
+st.title("🎨 HEX ⇄ CMYK Converter + Tints, Tones & Shades")
+st.write("Convert between HEX and CMYK, and explore tints, tones, and shades of your color.")
+
+# HEX → CMYK
+st.subheader("HEX → CMYK")
+hex_input = st.text_input("Enter HEX code", "#D4B39A")
+
+rgb = None
+if hex_input:
+    rgb = hex_to_rgb(hex_input)
+    if rgb:
+        cmyk = rgb_to_cmyk(*rgb)
+        st.write(f"**RGB:** {rgb}")
+        st.write(f"**CMYK:** C {cmyk[0]}%, M {cmyk[1]}%, Y {cmyk[2]}%, K {cmyk[3]}%")
+        st.color_picker("Preview", rgb_to_hex(*rgb), disabled=True)
+    else:
+        st.error("Invalid HEX format. Use something like #D4B39A.")
+
+# CMYK → HEX
+st.subheader("CMYK → HEX")
+c = st.number_input("C (%)", 0, 100, 0)
+m = st.number_input("M (%)", 0, 100, 0)
+y = st.number_input("Y (%)", 0, 100, 0)
+k = st.number_input("K (%)", 0, 100, 0)
+
+if st.button("Convert CMYK → HEX"):
+    rgb_from_cmyk = cmyk_to_rgb(c, m, y, k)
+    hex_code = rgb_to_hex(*rgb_from_cmyk)
+    st.write(f"**RGB:** {rgb_from_cmyk}")
+    st.write(f"**HEX:** {hex_code}")
+    st.color_picker("Preview (from CMYK)", hex_code, disabled=True)
+
+# Tints, Tones, Shades (based on HEX input)
+if rgb:
+    st.subheader("Tints, Tones, and Shades")
+
+    tints, shades, tones = generate_tints_shades_tones(*rgb, steps=8)
+
+    def render_row(colors, label):
+        st.markdown(f"**{label}**")
+        cols = st.columns(len(colors))
+        for col, (r, g, b) in zip(cols, colors):
+            with col:
+                hex_val = rgb_to_hex(r, g, b)
+                cmyk_val = rgb_to_cmyk(r, g, b)
+                st.markdown(
+                    f"<div style='width:100%;height:40px;border-radius:6px;"
+                    f"border:1px solid #ddd;background:{hex_val};'></div>",
+                    unsafe_allow_html=True,
+                )
+                st.caption(f"{hex_val}\nC{cmyk_val[0]} M{cmyk_val[1]} Y{cmyk_val[2]} K{cmyk_val[3]}")
+
+    render_row(tints, "Tints (lighter)")
+    render_row(tones, "Tones (muted)")
+    render_row(shades, "Shades (darker)")
