@@ -1,77 +1,166 @@
-import streamlit as st
-from colormath.color_objects import sRGBColor, LabColor
-from colormath.color_conversions import convert_color
-from colormath.color_diff import delta_e_cie2000
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>HEX ⇄ CMYK Converter</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      padding: 40px;
+      background: #f5f5f5;
+      color: #222;
+    }
+    .card {
+      max-width: 480px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+    }
+    h1 { font-size: 22px; margin-bottom: 16px; }
+    label { font-size: 14px; font-weight: 600; display: block; margin-top: 16px; }
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+      margin-top: 6px;
+    }
+    button {
+      margin-top: 20px;
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: none;
+      background: #222;
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .preview {
+      width: 100%;
+      height: 60px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      margin: 16px 0;
+    }
+    .result { font-size: 14px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>HEX ⇄ CMYK Converter</h1>
 
-# Sample Pantone TPX colors
-PANTONE_TPX = {
-    "#F4C2C2": "Pantone 13-1520 TPX",
-    "#FFDD00": "Pantone 13-0858 TPX",
-    "#0077B6": "Pantone 19-4052 TPX",
-    "#C4A484": "Pantone 16-1334 TPX",
-    "#8A2BE2": "Pantone 18-3838 TPX",
-    "#00FF7F": "Pantone 14-6316 TPX",
-    "#FF4500": "Pantone 17-1564 TPX",
-    "#6A5ACD": "Pantone 18-3830 TPX",
-    "#FFD700": "Pantone 14-0957 TPX",
-    "#40E0D0": "Pantone 15-5519 TPX"
-}
+    <label>HEX → CMYK</label>
+    <input id="hexInput" placeholder="#D4B39A" />
 
-def hex_to_cmyk(hex_code):
-    hex_code = hex_code.lstrip('#')
-    r = int(hex_code[0:2], 16) / 255.0
-    g = int(hex_code[2:4], 16) / 255.0
-    b = int(hex_code[4:6], 16) / 255.0
+    <label>CMYK → HEX (comma separated)</label>
+    <input id="cmykInput" placeholder="0, 12, 22, 0" />
 
-    k = 1 - max(r, g, b)
-    if k == 1:
-        return 0, 0, 0, 100
-    c = (1 - r - k) / (1 - k)
-    m = (1 - g - k) / (1 - k)
-    y = (1 - b - k) / (1 - k)
-    return round(c*100), round(m*100), round(y*100), round(k*100)
+    <button onclick="convert()">Convert</button>
 
-def closest_pantone(hex_code):
-    input_color = sRGBColor(
-        int(hex_code[0:2],16),
-        int(hex_code[2:4],16),
-        int(hex_code[4:6],16),
-        is_upscaled=True
-    )
-    input_lab = convert_color(input_color, LabColor)
-    min_diff = float('inf')
-    closest_name = ""
-    for pantone_hex, pantone_name in PANTONE_TPX.items():
-        pantone_color = sRGBColor(
-            int(pantone_hex[1:3],16),
-            int(pantone_hex[3:5],16),
-            int(pantone_hex[5:7],16),
-            is_upscaled=True
-        )
-        pantone_lab = convert_color(pantone_color, LabColor)
-        diff = delta_e_cie2000(input_lab, pantone_lab)
-        if diff < min_diff:
-            min_diff = diff
-            closest_name = pantone_name
-    return closest_name
+    <div id="preview" class="preview"></div>
+    <div id="results" class="result"></div>
+  </div>
 
-# Streamlit UI
-st.set_page_config(page_title="PRISM + HUE", layout="centered")
-st.title("🎨 PRISM + HUE")
-st.write("Convert HEX colors to CMYK and find the closest Pantone TPX with a live preview.")
+  <script>
+    function normalizeHex(hex) {
+      hex = hex.trim();
+      if (!hex.startsWith("#")) hex = "#" + hex;
+      if (hex.length === 4) {
+        const r = hex[1], g = hex[2], b = hex[3];
+        hex = "#" + r + r + g + g + b + b;
+      }
+      return hex.toUpperCase();
+    }
 
-hex_input = st.text_input("Enter HEX code (e.g., #FF5733):", "#FF5733")
+    function hexToRgb(hex) {
+      hex = normalizeHex(hex);
+      if (!/^#([0-9A-F]{6})$/.test(hex)) return null;
+      return {
+        r: parseInt(hex.slice(1, 3), 16),
+        g: parseInt(hex.slice(3, 5), 16),
+        b: parseInt(hex.slice(5, 7), 16),
+        hex
+      };
+    }
 
-if st.button("Convert"):
-    try:
-        c, m, y, k = hex_to_cmyk(hex_input)
-        pantone = closest_pantone(hex_input)
-        st.success(f"**CMYK:** {c}%, {m}%, {y}%, {k}%")
-        st.success(f"**Closest Pantone TPX:** {pantone}")
-        st.markdown(
-            f"<div style='width:100px; height:100px; background-color:{hex_input}; border:1px solid #000'></div>",
-            unsafe_allow_html=True
-        )
-        st.code(f"HEX: {hex_input}\nCMYK: {c},{m},{y},{k}\nPantone: {pantone}", language="text")
-    except Exception as e:
-        st.error(f"Error: {e}")
+    function rgbToCmyk(r, g, b) {
+      const rp = r / 255, gp = g / 255, bp = b / 255;
+      const k = 1 - Math.max(rp, gp, bp);
+      if (k === 1) return { c: 0, m: 0, y: 0, k: 100 };
+      const c = (1 - rp - k) / (1 - k);
+      const m = (1 - gp - k) / (1 - k);
+      const y = (1 - bp - k) / (1 - k);
+      return {
+        c: Math.round(c * 100),
+        m: Math.round(m * 100),
+        y: Math.round(y * 100),
+        k: Math.round(k * 100)
+      };
+    }
+
+    function cmykToRgb(c, m, y, k) {
+      c /= 100; m /= 100; y /= 100; k /= 100;
+      const r = 255 * (1 - c) * (1 - k);
+      const g = 255 * (1 - m) * (1 - k);
+      const b = 255 * (1 - y) * (1 - k);
+      return {
+        r: Math.round(r),
+        g: Math.round(g),
+        b: Math.round(b)
+      };
+    }
+
+    function rgbToHex(r, g, b) {
+      return (
+        "#" +
+        r.toString(16).padStart(2, "0") +
+        g.toString(16).padStart(2, "0") +
+        b.toString(16).padStart(2, "0")
+      ).toUpperCase();
+    }
+
+    function convert() {
+      const hexInput = document.getElementById("hexInput").value.trim();
+      const cmykInput = document.getElementById("cmykInput").value.trim();
+      const results = document.getElementById("results");
+      const preview = document.getElementById("preview");
+
+      let output = "";
+
+      // HEX → CMYK
+      if (hexInput) {
+        const rgb = hexToRgb(hexInput);
+        if (rgb) {
+          const cmyk = rgbToCmyk(rgb.r, rgb.g, rgb.b);
+          output += `<strong>HEX → CMYK</strong><br>
+            HEX: ${rgb.hex}<br>
+            CMYK: ${cmyk.c}%, ${cmyk.m}%, ${cmyk.y}%, ${cmyk.k}%<br><br>`;
+          preview.style.background = rgb.hex;
+        } else {
+          output += "Invalid HEX format.<br><br>";
+        }
+      }
+
+      // CMYK → HEX
+      if (cmykInput) {
+        const parts = cmykInput.split(",").map(v => parseFloat(v.trim()));
+        if (parts.length === 4 && parts.every(v => !isNaN(v))) {
+          const rgb = cmykToRgb(parts[0], parts[1], parts[2], parts[3]);
+          const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+          output += `<strong>CMYK → HEX</strong><br>
+            RGB: ${rgb.r}, ${rgb.g}, ${rgb.b}<br>
+            HEX: ${hex}<br>`;
+          preview.style.background = hex;
+        } else {
+          output += "Invalid CMYK format.";
+        }
+      }
+
+      results.innerHTML = output;
+    }
+  </script>
+</body>
+</html>
